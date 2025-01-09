@@ -25,10 +25,16 @@ function prepareHandshakeResponse (id: string){
     ].map(line => line.concat('\r\n')).join('')
 }
 
+function onSocketReadable(socket: Duplex) {
+    socket.read(1);
+}
+
 function onSocketUpgrade  (req: IncomingMessage, socket: Duplex, head: Buffer)  {
     const  { 'sec-websocket-key': clientSocketKey} = req.headers
     const response = prepareHandshakeResponse(clientSocketKey)
     socket.write(response);
+
+    socket.on('readable', () => onSocketReadable(socket))
 
 }
 const server = createServer((req, res) => {
@@ -41,7 +47,7 @@ const server = createServer((req, res) => {
 
 server.on('upgrade', onSocketUpgrade)
 
-;[
+    ;[
     "uncaughtException",
     "unhandledRejection"
 ].forEach(event =>
