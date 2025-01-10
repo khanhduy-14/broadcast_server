@@ -1,10 +1,11 @@
 import {createServer} from 'http';
-import crypto from 'crypto';
+import * as crypto from 'crypto';
 import {IncomingMessage} from "node:http";
 import {Duplex} from "node:stream";
-import * as buffer from "node:buffer";
 
 const PORT = 1337
+
+const FIRST_BIT = 128;
 
 const WEBSOCKET_MAGIC_STRING = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 
@@ -27,6 +28,13 @@ function prepareHandshakeResponse (id: string){
 
 function onSocketReadable(socket: Duplex) {
     socket.read(1);
+
+    const [markerAndPayloadLength] = socket.read(1);
+
+    const lengthIndicatorInBits = markerAndPayloadLength - FIRST_BIT;
+    console.log(lengthIndicatorInBits);
+    // const messageLength = parseInt((lengthIndicatorInBits).toString().padStart(8,'0'), 2)
+    // console.log({messageLength})
 }
 
 function onSocketUpgrade  (req: IncomingMessage, socket: Duplex, head: Buffer)  {
