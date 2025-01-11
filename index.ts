@@ -8,7 +8,10 @@ const PORT = 1337
 const FIRST_BIT = 128;
 
 const WEBSOCKET_MAGIC_STRING = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
-
+const SEVEN_BITS_INTEGER_MARKER = 125;
+const SIXTEEN_BITS_INTEGER_MARKER = 126;
+const SIXTYFOUR_BITS_INTEGER_MARKER = 127;
+const MASK_KEYS_BYTE_LENGTH = 4;
 function createSocketAccept (id : string){
     const hash = crypto.createHash('sha1');
     hash.update(id+ WEBSOCKET_MAGIC_STRING);
@@ -32,9 +35,23 @@ function onSocketReadable(socket: Duplex) {
     const [markerAndPayloadLength] = socket.read(1);
 
     const lengthIndicatorInBits = markerAndPayloadLength - FIRST_BIT;
-    console.log(lengthIndicatorInBits);
-    // const messageLength = parseInt((lengthIndicatorInBits).toString().padStart(8,'0'), 2)
-    // console.log({messageLength})
+
+    let messageLength= 0;
+
+    if(lengthIndicatorInBits <= SEVEN_BITS_INTEGER_MARKER) {
+        messageLength = lengthIndicatorInBits;
+    }
+    else {
+        throw  new Error('your message is too long');
+    }
+
+    const maskKey = socket.read(MASK_KEYS_BYTE_LENGTH);
+    const encoded = socket.read(messageLength);
+
+    console.log({
+        maskKey,
+        encoded,
+    })
 }
 
 function onSocketUpgrade  (req: IncomingMessage, socket: Duplex, head: Buffer)  {
