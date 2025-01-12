@@ -23,7 +23,7 @@
         console.log('sending', id)
         const data = JSON.stringify({
             id,
-            message: 'hihi'
+            message: 'Client sending message',
         })
         socket.send(data)
     }

@@ -52,6 +52,17 @@ function onSocketReadable(socket: Duplex) {
         maskKey,
         encoded,
     })
+    const decoded = unmask(encoded, maskKey)
+    const received = decoded.toString('utf-8')
+
+    const data = JSON.parse(received)
+    console.log('Message received', data)
+}
+
+function unmask (encodedBuffer: any, maskKey: any) {
+    const decoded = Uint8Array.from(encodedBuffer, (element, index) => element ^ maskKey[index % 4])
+
+    return Buffer.from(decoded)
 }
 
 function onSocketUpgrade  (req: IncomingMessage, socket: Duplex, head: Buffer)  {
