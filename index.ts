@@ -12,6 +12,8 @@ const SEVEN_BITS_INTEGER_MARKER = 125;
 const SIXTEEN_BITS_INTEGER_MARKER = 126;
 const SIXTYFOUR_BITS_INTEGER_MARKER = 127;
 const MASK_KEYS_BYTE_LENGTH = 4;
+const OPCODE_TEXT = 0x01;
+
 function createSocketAccept (id : string){
     const hash = crypto.createHash('sha1');
     hash.update(id+ WEBSOCKET_MAGIC_STRING);
@@ -27,6 +29,38 @@ function prepareHandshakeResponse (id: string){
         `sec-webSocket-accept: ${acceptKey}`,
         ''
     ].map(line => line.concat('\r\n')).join('')
+}
+
+function  sendMessage(msg: any, socket: Duplex) {
+    const dataFrameBuffer = prepareMessage(msg);
+    socket.write(dataFrameBuffer);
+}
+
+function concat(bufferList: Buffer[], totalLength: number){
+    const target = Buffer.allocUnsafe(totalLength);
+    let offset = 0;
+
+    for (const buffer of bufferList){
+        target.set(buffer, offset);
+        offset += buffer.length;
+
+    }
+    return target;
+}
+
+function prepareMessage (message: any) {
+    const msg = Buffer.from(message);
+    const messageSize =  msg.length;
+    let dataFrameBuffer: Buffer;
+    const firstByte = 0x80 | OPCODE_TEXT;
+    if(messageSize < SEVEN_BITS_INTEGER_MARKER) {
+        dataFrameBuffer = Buffer.from([firstByte].concat(messageSize))
+    }
+    else {
+        throw new Error('Message too long');
+    }
+    const totalLength = dataFrameBuffer.byteLength + messageSize;
+    return concat([dataFrameBuffer, msg], totalLength);
 }
 
 function onSocketReadable(socket: Duplex) {
@@ -57,6 +91,9 @@ function onSocketReadable(socket: Duplex) {
 
     const data = JSON.parse(received)
     console.log('Message received', data)
+
+    console.log('Sending message')
+    sendMessage(JSON.stringify(data), socket);
 }
 
 function unmask (encodedBuffer: any, maskKey: any) {
