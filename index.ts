@@ -89,17 +89,42 @@ function onSocketReadable(socket: Duplex) {
     else if (lengthIndicatorInBits <= SIXTEEN_BITS_INTEGER_MARKER) {
         messageLength = socket.read(2).readUint16BE(0);
     }
+    else if (lengthIndicatorInBits <= SIXTYFOUR_BITS_INTEGER_MARKER) {
+        messageLength = Number(socket.read(8).readBigUInt64BE(0));
+    }
     else {
         throw  new Error('your message is too long');
     }
 
-    console.log(messageLength)
     const maskKey = socket.read(MASK_KEYS_BYTE_LENGTH);
-    const encoded = socket.read(messageLength);
+    console.log('readableLength', socket.readableLength)
+
+
+    let encoded = Buffer.alloc(0);
+
+    while (encoded.length < messageLength) {
+        const chunk = socket.read() as Buffer;
+        if (chunk) {
+            encoded = Buffer.concat([encoded, chunk]);
+        } else {
+            break;
+        }
+    }
+
+    console.log('Final Encoded Length:', encoded.length);
+    console.log('messageLength', messageLength)
+
+    // while(encoded.length < messageLength) {
+    //     const chunk = socket.read(socket.readableLength);
+    //     if(chunk) {
+    //         encoded = Buffer.concat([encoded, chunk]);
+    //     }
+    // }
 
     console.log({
         maskKey,
         encoded,
+        encodedLength: encoded.length,
     })
     const decoded = unmask(encoded, maskKey)
     const received = decoded.toString('utf-8')
