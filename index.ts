@@ -74,66 +74,41 @@ function prepareMessage (message: any) {
     return concat([dataFrameBuffer, msg], totalLength);
 }
 
-function onSocketReadable(socket: Duplex) {
-    socket.read(1);
 
-    const [markerAndPayloadLength] = socket.read(1);
+function onSocketReadable(buffer: Buffer) {
+    // Process the buffer directly as in your original code
+    buffer  = buffer.subarray(1);
+    const markerAndPayloadLength = buffer.readUInt8(0);
 
     const lengthIndicatorInBits = markerAndPayloadLength - FIRST_BIT;
 
-    let messageLength= 0;
+    console.log(lengthIndicatorInBits)
+    let messageLength = 0;
 
-    if(lengthIndicatorInBits <= SEVEN_BITS_INTEGER_MARKER) {
+    if (lengthIndicatorInBits <= SEVEN_BITS_INTEGER_MARKER) {
         messageLength = lengthIndicatorInBits;
-    }
-    else if (lengthIndicatorInBits <= SIXTEEN_BITS_INTEGER_MARKER) {
-        messageLength = socket.read(2).readUint16BE(0);
-    }
-    else if (lengthIndicatorInBits <= SIXTYFOUR_BITS_INTEGER_MARKER) {
-        messageLength = Number(socket.read(8).readBigUInt64BE(0));
-    }
-    else {
-        throw  new Error('your message is too long');
+    } else if (lengthIndicatorInBits <= SIXTEEN_BITS_INTEGER_MARKER) {
+        messageLength = buffer.slice(1, 3).readUInt16BE(0);
+    } else if (lengthIndicatorInBits <= SIXTYFOUR_BITS_INTEGER_MARKER) {
+        messageLength = Number(buffer.slice(1, 9).readBigUInt64BE(0));
+    } else {
+        throw new Error('your message is too long');
     }
 
-    const maskKey = socket.read(MASK_KEYS_BYTE_LENGTH);
-    console.log('readableLength', socket.readableLength)
+    const maskKey = buffer.slice(9, 13); // Adjust this slice based on your format
 
-
-    let encoded = Buffer.alloc(0);
-
-    while (encoded.length < messageLength) {
-        const chunk = socket.read() as Buffer;
-        if (chunk) {
-            encoded = Buffer.concat([encoded, chunk]);
-        } else {
-            break;
-        }
-    }
-
+    let encoded = buffer.slice(13, 13 + messageLength);
     console.log('Final Encoded Length:', encoded.length);
-    console.log('messageLength', messageLength)
+    console.log('messageLength', messageLength);
 
-    // while(encoded.length < messageLength) {
-    //     const chunk = socket.read(socket.readableLength);
-    //     if(chunk) {
-    //         encoded = Buffer.concat([encoded, chunk]);
-    //     }
-    // }
+    const decoded = unmask(encoded, maskKey);
+    const received = decoded.toString('utf-8');
 
-    console.log({
-        maskKey,
-        encoded,
-        encodedLength: encoded.length,
-    })
-    const decoded = unmask(encoded, maskKey)
-    const received = decoded.toString('utf-8')
+    const data = JSON.parse(received);
+    console.log('Message received', data);
 
-    const data = JSON.parse(received)
-    console.log('Message received', data)
-
-    console.log('Sending message')
-    sendMessage(JSON.stringify(data), socket);
+    console.log('Sending message');
+    // sendMessage(JSON.stringify(data), socket);
 }
 
 function unmask (encodedBuffer: any, maskKey: any) {
@@ -147,9 +122,27 @@ function onSocketUpgrade  (req: IncomingMessage, socket: Duplex, head: Buffer)  
     const response = prepareHandshakeResponse(clientSocketKey)
     socket.write(response);
 
-    socket.on('readable', () => onSocketReadable(socket))
+    let dataBuffer: Buffer[] = []
+    socket.on('data', (chunk) => {
+        console.log('chunk')
+        dataBuffer.push(chunk);
+    })
+    socket.on('end', () => {
+        const completeBuffer = Buffer.concat(dataBuffer);
+        console.log('Complete data received:', completeBuffer);
+        onSocketReadable(completeBuffer)
+        console.log('ending')
+    })
+    // socket.resume().on('error', () => {
+    //     console.log('da vao error')
+    // })
+
 
 }
+function isCompleteMessage(message) {
+    return message.endsWith('\n');
+}
+
 const server = createServer((req, res) => {
     res.writeHead(200);
     res.end('Hello World!');
@@ -168,3 +161,5 @@ server.on('upgrade', onSocketUpgrade)
         console.error(`Error: ${event}, Message: ${err.stack || err}`)
     })
 )
+
+

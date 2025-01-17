@@ -12,6 +12,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "socket.io": "^4.8.1",
     "tsx": "^4.19.2"
   },
   "devDependencies": {
