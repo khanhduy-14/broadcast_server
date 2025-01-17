@@ -2,6 +2,10 @@ import {createServer} from 'http';
 import * as crypto from 'crypto';
 import {IncomingMessage} from "node:http";
 import {Duplex} from "node:stream";
+import BufferReader from "./bufferReader";
+import DataFrameReader from "./dataFrame";
+import DataFrame from "./dataFrame";
+import dataFrame from "./dataFrame";
 
 const PORT = 1337
 
@@ -9,6 +13,7 @@ const FIRST_BIT = 128;
 
 const WEBSOCKET_MAGIC_STRING = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 const MAXIMUM_SIXTEEN_BITS_INTEGER = 2 ** 16
+const MAXIMUM_SIXTYFOUR_BITS_INTEGER = 2 ** 64
 const SEVEN_BITS_INTEGER_MARKER = 125;
 const SIXTEEN_BITS_INTEGER_MARKER = 126;
 const SIXTYFOUR_BITS_INTEGER_MARKER = 127;
@@ -66,6 +71,13 @@ function prepareMessage (message: any) {
         target.writeUint16BE(messageSize, 2)
 
         dataFrameBuffer = target
+    } else if (messageSize <= MAXIMUM_SIXTYFOUR_BITS_INTEGER) {
+        const offsetTenBytes = 10
+        const target = Buffer.allocUnsafe(offsetTenBytes);
+        target[0] = firstByte
+        target[1] = SIXTYFOUR_BITS_INTEGER_MARKER | 0x00;
+        target.writeBigUInt64BE(BigInt(messageSize), 2)
+        dataFrameBuffer = target;
     }
     else {
         throw new Error(`Can't sending your message too long`);
@@ -74,41 +86,44 @@ function prepareMessage (message: any) {
     return concat([dataFrameBuffer, msg], totalLength);
 }
 
-
-function onSocketReadable(buffer: Buffer) {
-    // Process the buffer directly as in your original code
-    buffer  = buffer.subarray(1);
-    const markerAndPayloadLength = buffer.readUInt8(0);
+function onHandleDataFrame(dataFrameReader: DataFrame, socket: Duplex) {
+    const {buffer, length: chunkLength} = dataFrameReader.getBuffer();
+    const bufferReader = new BufferReader(buffer);
+    bufferReader.read(1)
+    const markerAndPayloadLength = bufferReader.read(1).readUInt8(0);
 
     const lengthIndicatorInBits = markerAndPayloadLength - FIRST_BIT;
 
-    console.log(lengthIndicatorInBits)
     let messageLength = 0;
 
     if (lengthIndicatorInBits <= SEVEN_BITS_INTEGER_MARKER) {
         messageLength = lengthIndicatorInBits;
     } else if (lengthIndicatorInBits <= SIXTEEN_BITS_INTEGER_MARKER) {
-        messageLength = buffer.slice(1, 3).readUInt16BE(0);
+        messageLength = bufferReader.read(2).readUInt16BE(0);
     } else if (lengthIndicatorInBits <= SIXTYFOUR_BITS_INTEGER_MARKER) {
-        messageLength = Number(buffer.slice(1, 9).readBigUInt64BE(0));
+        messageLength = Number(bufferReader.read(8).readBigUInt64BE(0));
     } else {
         throw new Error('your message is too long');
     }
+    const maskKey = bufferReader.read(4)
 
-    const maskKey = buffer.slice(9, 13); // Adjust this slice based on your format
-
-    let encoded = buffer.slice(13, 13 + messageLength);
-    console.log('Final Encoded Length:', encoded.length);
-    console.log('messageLength', messageLength);
-
+    if(messageLength !== bufferReader.get().length) {
+        console.debug('Need more chunk data frame fragment');
+        return;
+    }
+    if(dataFrameReader.get().length > 1) {
+        console.debug('Data frame chunk assembled');
+    }
+    let encoded = bufferReader.read(messageLength);
     const decoded = unmask(encoded, maskKey);
     const received = decoded.toString('utf-8');
 
     const data = JSON.parse(received);
+    dataFrameReader.remove(chunkLength)
     console.log('Message received', data);
 
-    console.log('Sending message');
-    // sendMessage(JSON.stringify(data), socket);
+    console.log('Sending message back');
+    sendMessage(JSON.stringify(data), socket);
 }
 
 function unmask (encodedBuffer: any, maskKey: any) {
@@ -122,26 +137,13 @@ function onSocketUpgrade  (req: IncomingMessage, socket: Duplex, head: Buffer)  
     const response = prepareHandshakeResponse(clientSocketKey)
     socket.write(response);
 
-    let dataBuffer: Buffer[] = []
+    const dataFrameReader = new DataFrameReader([]);
     socket.on('data', (chunk) => {
-        console.log('chunk')
-        dataBuffer.push(chunk);
+        dataFrameReader.add(chunk);
+        onHandleDataFrame(dataFrameReader, socket);
     })
-    socket.on('end', () => {
-        const completeBuffer = Buffer.concat(dataBuffer);
-        console.log('Complete data received:', completeBuffer);
-        onSocketReadable(completeBuffer)
-        console.log('ending')
-    })
-    // socket.resume().on('error', () => {
-    //     console.log('da vao error')
-    // })
-
-
 }
-function isCompleteMessage(message) {
-    return message.endsWith('\n');
-}
+
 
 const server = createServer((req, res) => {
     res.writeHead(200);
