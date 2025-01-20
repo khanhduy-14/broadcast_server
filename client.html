@@ -1,0 +1,38 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Socket Client</title>
+</head>
+
+<body>
+<p>Messages</p>
+<output id="messages"></output>
+<script>
+    const messages = document.getElementById('messages')
+    const socket = new WebSocket('ws://localhost:1337')
+
+    socket.onopen = (event) => {
+        console.log('WebSocket is connected!');
+
+        const id = Math.round(Math.random() * 100);
+        console.log('sending', id)
+        const data = JSON.stringify({
+            message: `Lorem Ipsum is simply ds popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with`})
+        socket.send(data)
+    }
+    socket.onmessage = (msg) => {
+        const message = msg.data
+        console.log('I got a message!', message)
+        messages.innerHTML += `<br /> ${message}`
+    }
+    socket.onerror = (error) => console.log('WebSocket error', error)
+    socket.onclose = (event) => console.log('Disconnected from the WebSocket server')
+</script>
+</body>
+
+</html>
