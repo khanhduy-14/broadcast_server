@@ -16,10 +16,12 @@ interface WebsocketServerEventMap {
 }
 class WebsocketServer extends EventEmitter {
     server: Server;
+    clientSocketMap: Map<string, Duplex>;
     constructor(server: Server) {
         super()
         this.server = server;
         this.server.on('upgrade', this.onSocketUpgrade.bind(this));
+        this.clientSocketMap = new Map();
     }
     private createSocketAccept (id : string){
         const hash = crypto.createHash('sha1');
@@ -44,6 +46,8 @@ class WebsocketServer extends EventEmitter {
         const  { 'sec-websocket-key': clientSocketKey} = req.headers
         const response = this.prepareHandshakeResponse(clientSocketKey)
         socket.write(response);
+
+        this.clientSocketMap.set(clientSocketKey, socket);
 
         const dataFrameReader = new DataFrameReader([]);
         socket.on('data', (chunk) => {
@@ -100,6 +104,47 @@ class WebsocketServer extends EventEmitter {
 
         return Buffer.from(decoded)
     }
+
+    private prepareMessage (message: any) {
+        const msg = Buffer.from(message);
+        const messageSize =  msg.length;
+        let dataFrameBuffer: Buffer;
+        // 0x80 = 128 first bit = one fragment data is sent;
+        const firstByte = 0x80 | SocketEnum.opCode.text;
+        if(messageSize <= SocketEnum.payloadLengthIndicator.sevenBits) {
+            dataFrameBuffer = Buffer.from([firstByte].concat(messageSize))
+        }
+        else if (messageSize <= BYTE_CONSTANT.MAXIMUM_SIXTEEN_BITS_VALUE) {
+            const offsetFourBytes = 4
+            const target = Buffer.allocUnsafe(offsetFourBytes)
+            target[0] = firstByte
+            target[1] = SocketEnum.payloadLengthIndicator.sixteenBits | 0x00
+
+            target.writeUint16BE(messageSize, 2)
+
+            dataFrameBuffer = target
+        } else if (messageSize <= BYTE_CONSTANT.MAXIMUM_SIXTY_FOUR_BITS_VALUE) {
+            const offsetTenBytes = 10
+            const target = Buffer.allocUnsafe(offsetTenBytes);
+            target[0] = firstByte
+            target[1] = SocketEnum.payloadLengthIndicator.sixtyFourBits | 0x00;
+            target.writeBigUInt64BE(BigInt(messageSize), 2)
+            dataFrameBuffer = target;
+        }
+        else {
+            throw new Error(`Can't sending your message too long`);
+        }
+        const totalLength = dataFrameBuffer.byteLength + messageSize;
+        return Utils.concatBuffer([dataFrameBuffer, msg], totalLength);
+    }
+
+    send (clientId: string, message: string)  {
+        const socket = this.clientSocketMap.get(clientId);
+        if(!socket) return;
+
+        return socket.write(this.prepareMessage(message));
+    }
+
 
 
     on<Event extends keyof WebsocketServerEventMap>(
