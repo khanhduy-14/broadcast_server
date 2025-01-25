@@ -19,7 +19,7 @@ socket.on('message', ({message, clientSocketKey}) => {
     console.log({
         clientSocketKey, message
     })
-    socket.send(clientSocketKey, JSON.stringify(message));
+    socket.send(clientSocketKey, JSON.stringify({clientSocketKey, message}));
 })
 
     ;[
