@@ -1,34 +1,9 @@
-import {createServer} from 'http';
-import WebsocketServer from "./websocket-server";
-
-const PORT = 1337
+import {program} from 'commander';
+import {createCommandGateway} from "./commands";
 
 
+program.version('1.0.0').description('Broadcast Channel CLI')
 
 
-const server = createServer((req, res) => {
-    res.writeHead(200);
-    res.end('Hello World!');
-}).listen(PORT, () => {
-    console.log(`Server is running at http://localhost:${PORT}`);
-});
-
-const socket = new WebsocketServer(server);
-
-socket.on('message', ({message, clientSocketKey}) => {
-    console.log({
-        clientSocketKey, message
-    })
-    socket.send(clientSocketKey, JSON.stringify(message));
-})
-
-    ;[
-    "uncaughtException",
-    "unhandledRejection"
-].forEach(event =>
-    process.on(event, (err) => {
-        console.error(`Error: ${event}, Message: ${err.stack || err}`)
-    })
-)
-
-
+createCommandGateway(program);
+program.parse(process.argv);
