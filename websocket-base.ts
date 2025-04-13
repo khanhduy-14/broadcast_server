@@ -50,7 +50,7 @@ class WebSocketBase extends EventEmitter {
             msg = this.toggleMask(msg, maskKey);
 
         }
-        console.log('send payload', messageSize)
+        // console.log('send payload', messageSize)
         const totalLength = dataFrameBuffer.byteLength + messageSize;
         return Utils.concatBuffer([dataFrameBuffer, msg], totalLength);
     }

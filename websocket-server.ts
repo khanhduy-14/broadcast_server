@@ -8,15 +8,16 @@ import WebSocketBase from "./websocket-base";
 
 interface WebsocketServerEventMap {
     message: { clientSocketKey: string; message: string };
+    onConnected: { socket: Duplex };
 }
 class WebsocketServer extends WebSocketBase{
     server: Server;
-    clientSocketMap: Map<string, Duplex>;
+    clientSocketMap: Record<string, Duplex>;
     constructor(server: Server) {
         super()
         this.server = server;
         this.server.on('upgrade', this.onSocketUpgrade.bind(this));
-        this.clientSocketMap = new Map();
+        this.clientSocketMap = {};
     }
     private createSocketAccept (id : string){
         const hash = crypto.createHash('sha1');
@@ -41,27 +42,42 @@ class WebsocketServer extends WebSocketBase{
         const  { 'sec-websocket-key': clientSocketKey} = req.headers
         const response = this.prepareHandshakeResponse(clientSocketKey)
         socket.write(response);
+        this.clientSocketMap[clientSocketKey] = socket;
+        this.emit('onConnected', {socket});
+        this.onHandleSocketEvent(clientSocketKey, socket)
+    }
 
-        this.clientSocketMap.set(clientSocketKey, socket);
-
+    private onHandleSocketEvent(clientSocketKey: string, socket: Duplex) {
         const dataFrameReader = new DataFrameReader([]);
         socket.on('data', (chunk) => {
+
             dataFrameReader.add(chunk);
             const message = this.extractMessage(dataFrameReader);
             if(!message) return;
+            if (message.type === 'disconnect') {
+                delete this.clientSocketMap[clientSocketKey]
+                socket.end()
+            }
             this.emit('message',{clientSocketKey, message});
         })
     }
 
-    send (clientId: string, message: string)  {
-        const socket = this.clientSocketMap.get(clientId);
-        if(!socket) return;
+    send (clientId: string, message: string, applyMask?: boolean)  {
 
-        return socket.write(this.prepareMessage(message, true));
+        const socket = this.clientSocketMap[clientId];
+        if(!socket) return;
+        socket.write(this.prepareMessage(message, applyMask));
     }
 
 
-
+    close (callback: VoidFunction) {
+        for (const clientId in this.clientSocketMap) {
+            const duplex = this.clientSocketMap[clientId]
+            duplex.end()
+        }
+        this.clientSocketMap = {}
+        callback?.()
+    }
     on<Event extends keyof WebsocketServerEventMap>(
         event: Event,
         listener: (args: WebsocketServerEventMap[Event]) => void

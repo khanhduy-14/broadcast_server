@@ -1,61 +1,123 @@
-import {createServer} from "http";
-import {Server} from "http";
-import {AddressInfo} from "node:net";
-import * as crypto from "crypto";
-const PORT = 0
+import * as net from 'net';
+import * as crypto from 'crypto';
+import WebSocketBase from "./websocket-base";
+import DataFrameReader from "./dataFrame";
 
-class WebsocketClient {
-    server: Server;
+interface WebsocketClientEventMap {
+    message: any;
+    close: any;
+}
+
+class WebSocketClient extends WebSocketBase {
+    private socket: net.Socket;
+    private isConnected: boolean = false;
+    public id: string = null;
     constructor() {
-        const server =createServer((req, res) => {
-            res.writeHead(200);
-            res.end('Hello World!');
-        })
+        super();
+    }
 
-        server.on('upgrade', (req, socket, head) => {
-            // Check for WebSocket headers
-            if (req.headers['upgrade'] !== 'websocket') {
-                socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
-                return;
-            }
-
-            // Handle WebSocket handshake
-            const acceptKey = req.headers['sec-websocket-key'];
-            const hash = crypto
-                .createHash('sha1')
-                .update(acceptKey + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11')
-                .digest('base64');
-
-            // Send response for WebSocket upgrade
-            const responseHeaders = [
-                'HTTP/1.1 101 Switching Protocols',
-                'Upgrade: websocket',
-                'Connection: Upgrade',
-                `Sec-WebSocket-Accept: ${hash}`,
+    /**
+     * Create a WebSocket connection to a server
+     * @param host Server hostname
+     * @param port Server port
+     * @param path WebSocket path
+     */
+    async connect(host: string, port: number, path: string = '/'): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const key = crypto.randomBytes(16).toString('base64');
+            this.id = key;
+            const requestHeaders = [
+                `GET ${path} HTTP/1.1`,
+                `Host: ${host}:${port}`,
+                `Upgrade: websocket`,
+                `Connection: Upgrade`,
+                `Sec-WebSocket-Key: ${key}`,
+                `Sec-WebSocket-Version: 13`,
+                '',
+                ''
             ];
-            socket.write(responseHeaders.join('\r\n') + '\r\n\r\n');
 
-            // Handle WebSocket messages
-            socket.on('data', (buffer) => {
-                // Decode WebSocket frame (simple text message)
-                const message = buffer.toString('utf8', 2, buffer.length - 1);
-                console.log('Received:', message);
+            this.socket = new net.Socket();
 
-                // Send a response back
-                const reply = Buffer.from(`\x81${String.fromCharCode(message.length)}${message}`);
-                socket.write(reply);
+            this.socket.connect(port, host, () => {
+                console.log('Connecting to server...');
+                this.socket.write(requestHeaders.join('\r\n'));
             });
 
-            socket.on('end', () => {
-                console.log('Client disconnected');
+            const dataFrameReader = new DataFrameReader([]);
+            this.socket.on('data', (data) => {
+                const response = data.toString();
+
+                if (response.includes('101 Switching Protocols')) {
+                    console.log('Connect to server successfully');
+                    this.isConnected = true;
+                    resolve();
+                    return;
+                }
+
+                dataFrameReader.add(data);
+                this.emit('message', this.extractMessage(dataFrameReader));
+            });
+            this.socket.on('close', (err) => {
+                this.emit('close')
+            });
+
+            this.socket.on('error', (err) => {
+                reject(err);
             });
         });
+    }
 
-        server.listen(PORT,() => {
-            console.log(`Client started on port: ${(server.address() as AddressInfo)?.port}`);
-        })
 
-        this.server = server
+    /**
+     * Send a string message over WebSocket
+     * Implements basic WebSocket frame construction
+     * @param message String message to send
+     */
+    sendMessage(message: string): void {
+        if (!this.isConnected) {
+            throw new Error('WebSocket not connected');
+        }
+
+
+        this.socket.write(this.prepareMessage(message, true));
+    }
+
+    on<Event extends keyof WebsocketClientEventMap>(
+        event: Event,
+        listener: (args: WebsocketClientEventMap[Event]) => void
+    ): this {
+        return super.on(event, listener);
+    }
+
+
+
+    close(): void {
+        if (this.socket) {
+            this.sendMessage(JSON.stringify({ type: 'disconnect' }));
+            this.socket.destroy();
+            this.isConnected = false;
+        }
     }
 }
-export default WebsocketClient
+
+// // Example usage
+// async function main() {
+//     const client = new WebSocketClient();
+//
+//     try {
+//         // Connect to WebSocket server
+//         await client.connect('localhost', 1337, '/');
+//
+//         // Send a test message
+//         client.sendMessage('Hello, WebSocket Server!');
+//
+//
+//     } catch (err) {
+//         console.error('WebSocket connection error:', err);
+//     }
+// }
+//
+// main();
+
+export default WebSocketClient
