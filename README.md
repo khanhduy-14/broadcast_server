@@ -41,7 +41,7 @@ cd broadcast-cli
 npm install
 ```
 
-**Link the Project Globally (Optional)**
+**Link the Project Globally**
 ```bash
 npm link
 ```
