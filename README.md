@@ -31,7 +31,7 @@ Broadcast CLI is a command-line interface application that demonstrates WebSocke
 
 **Clone the Repository**
 ```bash
-git clone git@github.com:yourusername/broadcast-cli.git
+git clone git@github.com:khanhduy14/broadcast-cli.git
 # Navigate to the project directory
 cd broadcast-cli
 ```
