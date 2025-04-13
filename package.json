@@ -4,15 +4,18 @@
   "description": "",
   "main": "index.js",
   "type": "module",
+  "bin": {
+    "bc-cli": "./bin/index.ts"
+  },
   "scripts": {
-    "dev": "tsx watch index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "tsx": "^4.19.2"
+    "commander": "^13.1.0",
+    "tsx": "^4.19.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.5"
