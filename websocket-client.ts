@@ -101,23 +101,5 @@ class WebSocketClient extends WebSocketBase {
     }
 }
 
-// // Example usage
-// async function main() {
-//     const client = new WebSocketClient();
-//
-//     try {
-//         // Connect to WebSocket server
-//         await client.connect('localhost', 1337, '/');
-//
-//         // Send a test message
-//         client.sendMessage('Hello, WebSocket Server!');
-//
-//
-//     } catch (err) {
-//         console.error('WebSocket connection error:', err);
-//     }
-// }
-//
-// main();
 
 export default WebSocketClient
